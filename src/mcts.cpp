@@ -1,6 +1,7 @@
 #include <stdint.h>
 #include "mcts.h"
 #include "process.h"
+#include "guard.h"
 
 namespace coacd
 {
@@ -692,6 +693,7 @@ namespace coacd
     {
         while (node->get_state()->is_terminal() == false)
         {
+            check_deadline();
             if (node->is_all_expand())
             {
                 node = best_child(node, true, initial_cost);
@@ -715,6 +717,7 @@ namespace coacd
 
         while (current_state.is_terminal() == false)
         {
+            check_deadline();
             vector<Plane> planes;
             Plane bestplane;
             double bestcost, cut_area;

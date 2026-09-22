@@ -1,4 +1,5 @@
 #include "./process.h"
+#include "guard.h"
 #include "mcts.h"
 #include "config.h"
 #include "bvh.h"
@@ -267,6 +268,7 @@ namespace coacd
             costMatrix.resize(bound); // only keeps the top half of the matrix
 
             auto process_index = [&](int idx) {
+                check_deadline();
                 // Sampling inside ComputeHCost draws from the thread-local
                 // engine; reseed per pair so the cost does not depend on what
                 // this worker thread happened to process before.
@@ -309,10 +311,12 @@ namespace coacd
             std::vector<std::exception_ptr> exceptions(num_threads);
             int chunk_size = (bound + num_threads - 1) / num_threads;
             
+            deadline_state const deadline = current_deadline();
             for (unsigned int t = 0; t < num_threads; ++t)
             {
-            	threads.emplace_back([t, chunk_size, bound, &process_index, &exceptions]() {
+            	threads.emplace_back([t, chunk_size, bound, deadline, &process_index, &exceptions]() {
                     try {
+                        enter_worker_thread(deadline);
                         int start_idx = t * chunk_size;
                         int end_idx = std::min(start_idx + chunk_size, bound);
                         for (int idx = start_idx; idx < end_idx; ++idx)
@@ -352,6 +356,7 @@ namespace coacd
 
             while (true)
             {
+                check_deadline();
                 // Search for lowest cost
                 double bestCost = INF;
                 const int32_t addr = FindMinimumElement(costMatrix, &bestCost, 0, (int32_t)costMatrix.size());
@@ -540,6 +545,7 @@ namespace coacd
         size_t iter = 0;
         while ((int)InputParts.size() > 0)
         {
+            check_deadline();
             vector<Model> tmp;
             logger::info("iter {} ---- waiting pool: {}", iter, InputParts.size());
 
@@ -551,6 +557,7 @@ namespace coacd
             vector<Model> done_ch(num_inputs), done_mesh(num_inputs);
             vector<char> has_pos(num_inputs, 0), has_neg(num_inputs, 0), done(num_inputs, 0);
             auto process_mesh_part = [&](int p) {
+                check_deadline();
                 double local_cut_area;
                 random_engine.seed(params.seed);
                 if (p % (num_inputs / 10 + 1) == 0)
@@ -626,10 +633,12 @@ namespace coacd
             std::vector<std::exception_ptr> exceptions(num_threads);
             int chunk_size = (num_inputs + num_threads - 1) / num_threads;
 
+            deadline_state const deadline = current_deadline();
             for (unsigned int t = 0; t < num_threads; ++t)
             {
-            	threads.emplace_back([t, chunk_size, num_inputs, &process_mesh_part, &exceptions]() {
+            	threads.emplace_back([t, chunk_size, num_inputs, deadline, &process_mesh_part, &exceptions]() {
                     try {
+                        enter_worker_thread(deadline);
                         int start_idx = t * chunk_size;
                         int end_idx = std::min(start_idx + chunk_size, num_inputs);
                         for (int p = start_idx; p < end_idx; ++p)

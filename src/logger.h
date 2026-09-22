@@ -17,6 +17,11 @@ namespace coacd
     namespace logger
     {
 
+        /// Receives every log line (level: 0 trace .. 5 critical, spdlog's
+        /// numbering) instead of the stdout sink; `nullptr` restores stdout.
+        typedef void (*callback_t)(int level, const char *message, void *user);
+        void set_callback(callback_t callback, void *user);
+
         #ifndef DISABLE_SPDLOG
         std::shared_ptr<spdlog::logger> get();
         #else

@@ -86,6 +86,12 @@ endif()
 
 add_library(coacd_objects OBJECT ${COACD_SRC})
 target_link_libraries(coacd_objects PRIVATE coacd_interface)
+# Asynchronous exception model: structured exceptions (access violations,
+# stack overflows, ...) become catchable C++ exceptions through the
+# per-thread translator in src/guard.cpp, so the C API reports them.
+if(MSVC)
+    target_compile_options(coacd_objects PRIVATE /EHa)
+endif()
 target_include_directories(coacd_objects
     PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/public>
            $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
@@ -121,11 +127,17 @@ endif()
 
 add_library(coacd STATIC "public/coacd.cpp")
 target_link_libraries(coacd PRIVATE coacd_objects)
+if(MSVC)
+    target_compile_options(coacd PRIVATE /EHa)
+endif()
 target_compile_definitions(coacd PUBLIC COACD_STATIC)
 target_link_libraries(coacd PUBLIC coacd_interface)
 
 add_library(_coacd SHARED "public/coacd.cpp")
 target_link_libraries(_coacd PRIVATE coacd_objects)
+if(MSVC)
+    target_compile_options(_coacd PRIVATE /EHa)
+endif()
 target_compile_definitions(_coacd PRIVATE _coacd_EXPORTS)
 target_link_libraries(_coacd PUBLIC coacd_interface)
 

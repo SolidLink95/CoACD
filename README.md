@@ -201,6 +201,35 @@ Parameter tuning *tricks*:
 4. Make sure your input mesh is 2-manifold solid if you set `-pm` to `off`. Skipping manifold pre-processing can better preserve input details and make the process faster but the algorithm may crush or generate wrong results if the input mesh is not 2-manifold.
 5. `--seed` is used for reproduction of the same results as our algorithm is stochastic.
 
+## Fault-tolerant C API (this fork)
+
+`public/coacd.h` adds an entry point that never lets an error escape into the host process:
+
+```c
+CoACD_Params params;
+CoACD_defaultParams(&params);
+params.threshold = 0.04;
+CoACD_MeshArray out;
+char message[512];
+int status = CoACD_runSafe(&mesh, &params, &out, message, sizeof message);
+if (status == COACD_OK) { /* use out, then CoACD_freeMeshArray(out) */ }
+else { /* CoACD_statusName(status), message */ }
+```
+
+- The mesh and parameters are validated first (`CoACD_validateMesh`, `CoACD_validateParams`): finite coordinates, in-range indices, a positive bounding-box extent, and the ranges the algorithm needs to terminate (a `NaN` coordinate used to spin forever; a preprocess resolution of 0 threw). Nothing runs on invalid input.
+- Every C++ exception and `std::bad_alloc` inside the decomposition is caught and reported (`COACD_ERROR_EXCEPTION`, `COACD_ERROR_BAD_ALLOC`), on the calling thread and on the `std::thread` workers.
+- On MSVC the library is compiled with `/EHa` and installs a per-thread structured-exception translator (`src/guard.cpp`), so an access violation, stack overflow or similar hardware fault becomes `COACD_ERROR_HARDWARE_FAULT` with the faulting address in the message instead of terminating the process. Faults on threads the library does not own (TBB workers inside OpenVDB) are not covered; run the decomposition in a child process when that matters.
+- `CoACD_Params::time_limit_seconds` (0 = none) arms a wall-clock deadline that the search and merge loops check; once it passes the run stops with `COACD_ERROR_TIMEOUT`, so no input can keep the library busy forever (a self-intersecting mesh with preprocessing off used to).
+- `CoACD_setLogCallback` routes the log to a callback (any thread) instead of stdout; `CoACD_version` reports `"1.0.14-safe"`.
+- The legacy `CoACD_run` is now a wrapper: on failure it logs and returns an empty array. `CoACD_setLogLevel` ignores unknown levels. `CoACD_freeMeshArray` no longer leaks the outer array.
+
+Build on Windows without OpenMP and with the static CRT for a self-contained DLL:
+
+```bash
+cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded -DWITH_OPENMP=OFF -DWITH_STD_THREADS=ON -DOPENVDB_CORE_SHARED=OFF -DTBB_TEST=OFF -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+cmake --build build --target _coacd --config Release
+```
+
 ## Citation
 
 If you find our code helpful, please cite our paper:
